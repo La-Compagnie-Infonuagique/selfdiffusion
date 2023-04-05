@@ -7,6 +7,11 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
+click = "^8.0.1"
+halo = "^0.0.31"
+
+ [tool.poetry.scripts]
+ selfdiffusion = 'selfdiffusion.cli:main'
 
 
 [build-system]
