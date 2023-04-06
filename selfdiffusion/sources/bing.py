@@ -4,7 +4,6 @@ import imghdr
 import posixpath
 import re
 
-
 class Bing:
     def __init__(self, query, limit, output_dir, adult, timeout,  filter='', verbose=True):
         self.download_count = 0
