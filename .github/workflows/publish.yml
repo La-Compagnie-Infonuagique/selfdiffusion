@@ -38,11 +38,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          poetry install
+          /Users/runner/.local/bin/poetry install
 
       - name: Run tests
-        run: poetry run pytest
+        run: /Users/runner/.local/bin/poetry run pytest
 
   publish:
     needs: test
