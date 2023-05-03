@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "selfdiffusion"
 version = "0.1.0"
-description = ""
+description = "Easily create datasets for diffusion models personalization"
 authors = ["Jonathan Pelletier <jonathan.pelletier-aafz@thecloudco.ca>"]
 readme = "README.md"
 
@@ -19,6 +19,7 @@ selfdiffusion = 'selfdiffusion.cli:main'
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.2"
+tox = "^4.5.1"
 
 [build-system]
 requires = ["poetry-core"]
