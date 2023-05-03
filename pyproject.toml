@@ -6,7 +6,7 @@ authors = ["Jonathan Pelletier <jonathan.pelletier-aafz@thecloudco.ca>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 click = "^8.0.1"
 halo = "^0.0.31"
 pillow = "^9.5.0"
