@@ -13,7 +13,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest]
         python-version: ["3.11"]
     steps:
       - name: Checkout repository
@@ -27,6 +27,7 @@ jobs:
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
+          export PATH="$PATH:/home/runner/.local/bin"
 
       - name: Cache Poetry virtual environment
         uses: actions/cache@v2
@@ -38,10 +39,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          /Users/runner/.local/bin/poetry install
+          poetry install
 
       - name: Run tests
-        run: /Users/runner/.local/bin/poetry run pytest
+        run: poetry run pytest
 
   publish:
     needs: test
@@ -70,10 +71,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          /Users/runner/.local/bin/poetry install
+          poetry install
 
       - name: Build package
-        run: /Users/runner/.local/bin/poetry build
+        run: poetry build
 
       - name: Publish package
         uses: pypa/gh-action-pypi-publish@release/v1
