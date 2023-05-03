@@ -71,11 +71,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          poetry install
+          /Users/runner/.local/bin/poetry install
 
       - name: Build package
-        run: poetry build
+        run: /Users/runner/.local/bin/poetry build
 
       - name: Publish package
         uses: pypa/gh-action-pypi-publish@release/v1
