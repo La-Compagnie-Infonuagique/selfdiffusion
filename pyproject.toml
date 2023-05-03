@@ -1,8 +1,9 @@
 [tool.poetry]
 name = "selfdiffusion"
-version = "0.1.0"
+version = "0.1.1"
 description = "Easily create datasets for diffusion models personalization"
 authors = ["Jonathan Pelletier <jonathan.pelletier-aafz@thecloudco.ca>"]
+repository = "https://github.com/La-Compagnie-Infonuagique/selfdiffusion"
 readme = "README.md"
 
 [tool.poetry.dependencies]
