@@ -1,10 +1,17 @@
-<p align="center">
+<p align="center" text-align="center">
   <img src="./assets/selfdiffusion.png" alt="self diffusion">
-  <h1>Self Diffusion</h1>
 </p>
 
-i[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![PyPI version](https://badge.fury.io/py/selfdiffusion.svg)](https://pypi.org/project/selfdiffusion/)
+<div align="center">
+  <h1>selfdiffusion</h1>
+</div>
+
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
+  <a href="https://pypi.org/project/selfdiffusion/"><img alt="PyPI version" src="https://badge.fury.io/py/selfdiffusion.svg"></a>
+  <a href="https://pypi.org/project/selfdiffusion/"><img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/selfdiffusion.svg"></a>
+</p>
+
 
 selfdiffusion is a CLI tool that helps you prepare training datasets of 
 *portrait* images for 
