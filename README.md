@@ -1,3 +1,4 @@
+![Your Project Logo](./assets/selfdiffusion.png)
 # selfdiffusion 
 selfdiffusion is a CLI tool that helps you prepare training datasets of 
 *portrait* images for 
@@ -23,7 +24,7 @@ dataset, we provide the utiliy bing command to download images from the internet
 selfdiffusion bing "portrait of a person" --target /path/to/target/folder --limit 20
 ```
 
-which will download 20 images of people from bing and store them in /path/to/target/folder.
+this will download 20 images of people from bing and store them in the /path/to/target/folder.
 
 Once you have your starting images, extract portraits suitable for fine tuning with the following command:
 
