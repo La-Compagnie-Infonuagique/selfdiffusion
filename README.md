@@ -59,4 +59,7 @@ and it's face is the only one in the image, as determined by [face_recognition](
 Sometimes, selfdiffusion will filter out an image that very evidently
 contains a single subject and it's face. If you absolutely want to have this image in your dataset, we suggest using a tool like [Birme](https://www.birme.net) for capturing the subject and resizing to the native model resolution.
 
+## Author
+Jonathan Pelletier.
+
 
