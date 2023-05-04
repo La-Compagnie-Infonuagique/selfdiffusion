@@ -1,5 +1,11 @@
-![Your Project Logo](./assets/selfdiffusion.png)
-# selfdiffusion 
+<p align="center">
+  <img src="./assets/selfdiffusion.png" alt="self diffusion">
+  <h1>Self Diffusion</h1>
+</p>
+
+i[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/selfdiffusion.svg)](https://pypi.org/project/selfdiffusion/)
+
 selfdiffusion is a CLI tool that helps you prepare training datasets of 
 *portrait* images for 
 [stable diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion) model
