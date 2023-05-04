@@ -1,5 +1,5 @@
 <p align="center" text-align="center">
-  <img src="./assets/selfdiffusion.png" alt="self diffusion">
+  <img src="https://github.com/La-Compagnie-Infonuagique/selfdiffusion/blob/master/assets/selfdiffusion.png" alt="self diffusion">
 </p>
 
 <div align="center">
