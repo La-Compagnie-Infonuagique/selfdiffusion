@@ -3,6 +3,11 @@ variable "app_name" {
   type        = string
 }
 
+variable "api_fqdn" {
+  description = "The FQDN of the domain api"
+  type        = string
+}
+
 variable "env" {
   description = "Name of the API gateway deployment stage"
   type        = string

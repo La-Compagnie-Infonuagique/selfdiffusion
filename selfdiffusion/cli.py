@@ -69,5 +69,66 @@ def person(src, target, resolution):
 
     return 
 
-if __name__ == '__main__':
-    main()
+@main.command()
+def signup():
+    """ Initiates the browser based signup process for selfdiffusion"""
+
+    from selfdiffusion.users import signup
+    signup()
+
+@main.command()
+@click.argument('email')
+def login(email):
+
+    from selfdiffusion.users import login
+    import questionary
+    password = questionary.password("Password:").ask()
+    result = login(email, password)
+    print(result)
+
+
+@main.command()
+@click.argument('folder')
+def review(folder):
+
+    from selfdiffusion.data import review
+    review(folder)
+
+@main.command()
+def connect():
+    """ Spins up a GPU runtime for the user """
+
+    # 1. CLI calls an API endpoint to spin up a GPU runtime.
+    # 2. Checks if the user has a GPU runtime already running.
+    # 3. If not, spins up a GPU runtime.
+    # 4. returns temporary IAM credentials via identity pool ? to let user run code.
+    # 5. CLI setups a SSH tunnel to the instance with AWS SSM.
+    # 6. All traffic is routed through the tunnel (e.g: what goes through 127.0.0.1:8888 goes to the instance)
+
+    sd_client = selfdiffusion_client()
+    (credentials, instance_id) = sd_client.connect()
+
+    aws_client = boto3.client('ssm')
+    aws_client.set_credentials(credentials)
+
+    aws_client.start_session(Target=instance_id, ssm_document_name='AWS-PortForwarding', args=['8888:localhost:8888'])
+
+    return
+
+@main.command()
+@click.argument('prompt')
+@click.option('--model', help='id of the model from hugging face model hub', required=True)
+@click.option('--resolution', help='output images resolution', type=(int,int), default=(512,512))
+@click.option('--inference-steps', help='Number of inference step', type=int, default=50)
+@click.option('--guidance-scale', help='classifier-free guidane parameter', type=float, default=7.5)
+@click.option('--negative-prompt', help='things that should not be in your generated samples', type=int, default=50)
+@click.option('--samples', help='Number of samples to generate for the prompt', type=int, default=1)
+def generate(prompt, model, resolution, inference_steps, guidance_scale, negative_prompt, samples):
+    """ runs remote inference and stream the result back to the user"""
+
+    ## PRESUPPOSITIONS
+    # 1. User has a GPU runtime running. (invoked connect command)
+
+    ## STEPS
+    # 
+

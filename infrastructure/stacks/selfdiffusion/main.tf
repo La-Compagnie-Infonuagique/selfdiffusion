@@ -1,6 +1,25 @@
 # TODO: 
 # 1. send cognito email from a custom domain
 
+resource "aws_route53_zone" "fqdn_zone" {
+  name = var.api_fqdn
+}
+
+# obtenir un certificat pour le domaine
+module "acm" {
+
+  providers = {
+    aws = aws.us-east-1
+  }
+
+  source = "terraform-aws-modules/acm/aws"
+
+  domain_name = aws_route53_zone.fqdn_zone.name
+  zone_id     = aws_route53_zone.fqdn_zone.zone_id
+
+  wait_for_validation = true
+}
+
 resource "aws_cognito_user_pool" "user_pool" {
   name = "${var.app_name}_user_pool"
 
@@ -174,7 +193,7 @@ resource "aws_api_gateway_account" "account" {
 
 resource "aws_api_gateway_rest_api" "api_gateway" {
   depends_on  = [aws_api_gateway_account.account]
-  name        = "api-gateway"
+  name        = "${var.app_name}_api"
   description = "API Gateway for managing user information and triggering ML jobs"
 
   endpoint_configuration {
@@ -257,5 +276,28 @@ resource "aws_api_gateway_stage" "stage" {
     destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
     format          = "$context.identity.sourceIp $context.status $context.responseLength $context.requestId $context.integrationErrorMessage $context.error.message"
   }
-
 }
+
+resource "aws_api_gateway_domain_name" "fqdn" {
+  certificate_arn = module.acm.acm_certificate_arn
+  domain_name     = aws_route53_zone.fqdn_zone.name
+}
+
+resource "aws_route53_record" "api_endpoint" {
+  zone_id = aws_route53_zone.fqdn_zone.zone_id
+  name    = aws_route53_zone.fqdn_zone.name
+  type    = "A"
+
+  alias {
+    evaluate_target_health = true
+    name                   = aws_api_gateway_domain_name.fqdn.cloudfront_domain_name
+    zone_id                = aws_api_gateway_domain_name.fqdn.cloudfront_zone_id
+  }
+}
+
+resource "aws_api_gateway_base_path_mapping" "path_mapping" {
+  domain_name = aws_api_gateway_domain_name.fqdn.domain_name
+  api_id      = aws_api_gateway_rest_api.api_gateway.id
+  stage_name  = aws_api_gateway_stage.stage.stage_name
+}
+

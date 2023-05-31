@@ -23,6 +23,16 @@ provider "aws" {
   }
 }
 
+provider "aws" {
+  region = "us-east-1"
+  alias  = "us-east-1"
+
+  assume_role {
+    role_arn = "${local.aws_role_arn}"
+    session_name = "devops_deployment"
+  }
+}
+
 EOF
 }
 
