@@ -112,3 +112,6 @@ ENV/
 
 # mkdocs build dir
 site/
+
+# terragrunt cache and lock
+.terragrunt-cache/
