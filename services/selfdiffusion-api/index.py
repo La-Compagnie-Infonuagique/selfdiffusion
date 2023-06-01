@@ -1,4 +1,6 @@
 import json
+import os
+import boto3
 
 def lambda_handler(event, _):
 
@@ -8,8 +10,12 @@ def lambda_handler(event, _):
     if path == "/config":
         conf = config()
         return ok_with_payload(conf)
-    if path ==  "/balance":
-        return ok_with_text("Hello World!")
+
+    elif path ==  "/balance":
+        auth_context = event['requestContext']['authorizer']
+        payload = balance(auth_context)
+        return ok_with_payload(payload)
+
     else:
         return not_found()
 
@@ -39,11 +45,39 @@ def ok_with_payload(payload):
         'headers': {
             'Content-Type': 'application/json'
         },
-        'body': payload
+        'body': body
     }
 
 def config():
+
+    # extract environment variables
+    client_id = os.environ['ClientId']
+    user_pool_id = os.environ['UserPoolId']
+    region = os.environ['Region']
     
     return {
-        "name": "selfdiffusion-api",
+        "client_id": client_id,
+        "user_pool_id": user_pool_id,
+        "region": region
     }
+
+def balance(auth_context):
+
+    # get cognito user
+    username = auth_context['claims']['cognito:username']
+
+    # get balance from dynamodb
+    table_name = os.environ['UserInfoTableName']
+
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(table_name)
+
+    response = table.get_item(Key={'username': username})
+
+    if 'Item' in response:
+        balance = response['Item'].get('balance')
+        return {'balance': balance}
+
+    else:
+        return {'balance': 0}
+    

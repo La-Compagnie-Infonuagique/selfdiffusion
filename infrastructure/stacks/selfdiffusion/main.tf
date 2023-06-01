@@ -1,6 +1,13 @@
 # TODO: 
 # 1. send cognito email from a custom domain
 
+locals {
+  namespace = "${var.app_name}_${var.env}"
+}
+
+# Get data about AWS region
+data "aws_region" "current" {}
+
 resource "aws_route53_zone" "fqdn_zone" {
   name = var.api_fqdn
 }
@@ -63,32 +70,12 @@ resource "aws_cognito_user_pool_client" "client" {
 resource "aws_dynamodb_table" "user_information" {
   name         = "user_info"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "email"
+  hash_key     = "username"
 
   attribute {
-    name = "email"
+    name = "username"
     type = "S"
   }
-}
-
-resource "aws_iam_role" "lambda_role" {
-  name = "${var.app_name}_lambda_role"
-
-  assume_role_policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Action": "sts:AssumeRole",
-      "Principal": {
-        "Service": "lambda.amazonaws.com"
-      },
-      "Effect": "Allow",
-      "Sid": ""
-    }
-  ]
-}
-EOF
 }
 
 resource "aws_iam_policy" "lambda_policy" {
@@ -105,23 +92,13 @@ resource "aws_iam_policy" "lambda_policy" {
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
-        "dynamodb:Query",
-        "dynamodb:Scan",
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem"
+        "dynamodb:*"
       ],
       "Resource": "*"
     }
   ]
 }
 EOF
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_role_policy_attachment" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = aws_iam_policy.lambda_policy.arn
 }
 
 module "lambda_function" {
@@ -131,9 +108,19 @@ module "lambda_function" {
   description   = "Handler for ${var.app_name} backend"
   handler       = "index.lambda_handler"
   runtime       = "python3.10"
+  attach_policy = true
+  policy        = aws_iam_policy.lambda_policy.arn
 
   # TODO: fix this to be relative path ...
   source_path = "/Users/jonathanpelletier/Projects/selfdiffusion/services/selfdiffusion-api"
+
+  # ENV variables for the lambda function
+  environment_variables = {
+    ClientId          = aws_cognito_user_pool_client.client.id
+    UserPoolId        = aws_cognito_user_pool.user_pool.id
+    Region            = data.aws_region.current.name
+    UserInfoTableName = aws_dynamodb_table.user_information.id
+  }
 
   tags = {
     Name = "${var.app_name}_lambda"
@@ -201,12 +188,12 @@ resource "aws_api_gateway_rest_api" "api_gateway" {
   }
 }
 
+# Balance
 resource "aws_api_gateway_resource" "api_gateway_resource" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
   path_part   = "balance"
 }
-
 
 # adding cognito authorizer
 resource "aws_api_gateway_authorizer" "authorizer" {
@@ -233,6 +220,36 @@ resource "aws_api_gateway_integration" "api_gateway_integration" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
   resource_id = aws_api_gateway_resource.api_gateway_resource.id
   http_method = aws_api_gateway_method.api_gateway_method.http_method
+
+  integration_http_method = aws_api_gateway_method.api_gateway_method.http_method
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_function.lambda_function_invoke_arn
+}
+
+# Config
+resource "aws_api_gateway_resource" "api_gateway_resource_config" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+  path_part   = "config"
+}
+
+
+resource "aws_api_gateway_method" "api_gateway_method_config" {
+  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+  resource_id   = aws_api_gateway_resource.api_gateway_resource_config.id
+  http_method   = "GET"
+  authorization = "NONE"
+
+  request_parameters = {
+    "method.request.path.proxy" = true
+  }
+
+}
+
+resource "aws_api_gateway_integration" "api_gateway_integration_config" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  resource_id = aws_api_gateway_resource.api_gateway_resource_config.id
+  http_method = aws_api_gateway_method.api_gateway_method_config.http_method
 
   integration_http_method = aws_api_gateway_method.api_gateway_method.http_method
   type                    = "AWS_PROXY"
@@ -301,3 +318,59 @@ resource "aws_api_gateway_base_path_mapping" "path_mapping" {
   stage_name  = aws_api_gateway_stage.stage.stage_name
 }
 
+## Networking for users gpu instances.
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+
+  name = "${var.app_name}_vpc"
+  cidr = var.vpc_cidr
+
+  azs            = var.azs
+  public_subnets = var.public_subnets
+
+  tags = {
+    env = var.env
+  }
+}
+
+## Create the Gateway S3 Endpoint and DynamoDB endpoints.
+### S3
+resource "aws_vpc_endpoint" "s3_endpoint" {
+  vpc_id       = module.vpc.vpc_id
+  service_name = "com.amazonaws.${data.aws_region.current.name}.s3"
+
+  route_table_ids   = module.vpc.public_route_table_ids
+  vpc_endpoint_type = "Gateway"
+}
+
+### DynamoDB
+resource "aws_vpc_endpoint" "dynamodb_endpoint" {
+  vpc_id       = module.vpc.vpc_id
+  service_name = "com.amazonaws.${data.aws_region.current.name}.dynamodb"
+
+  route_table_ids   = module.vpc.public_route_table_ids
+  vpc_endpoint_type = "Gateway"
+}
+
+## Security Group the customer instance will use.
+resource "aws_security_group" "outbound_only" {
+  name        = "${local.namespace}_sg"
+  description = "Only allow outbound traffic"
+
+  vpc_id = module.vpc.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+## Store the security group id in a SSM parameter store
+resource "aws_ssm_parameter" "outbound_only_sg" {
+  name = "/${var.app_name}/${var.env}/outbound_only_sg"
+
+  type  = "String"
+  value = aws_security_group.outbound_only.id
+}

@@ -11,4 +11,7 @@ inputs = {
     auth_session_validity_hours = 5
     callback_url = "https://localhost:3456"
     enable_token_recovation = true
+    azs = ["ca-central-1a", "ca-central-1b"]
+    cidr = "10.0.0.0/16"
+    public_subnets = ["10.0.0.0/17", "10.0.128.0/17"]
 }

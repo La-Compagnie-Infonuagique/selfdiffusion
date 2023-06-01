@@ -5,12 +5,17 @@ from selfdiffusion.utils import create_target
 from selfdiffusion.utils import image_loader
 from selfdiffusion.utils import image_saver
 from selfdiffusion.log import logger
+from selfdiffusion.api import SelfDiffusionClient
 from halo import Halo
 from pathlib import Path
+import questionary
+
+sd_client = SelfDiffusionClient("https://api.dev.selfdiffusion.net")
 
 @click.group()
 def main():
     pass
+
 
 @main.command()
 @click.argument('query')
@@ -73,18 +78,47 @@ def person(src, target, resolution):
 def signup():
     """ Initiates the browser based signup process for selfdiffusion"""
 
-    from selfdiffusion.users import signup
-    signup()
+
+    # ask for email, password, phone number
+    email = questionary.text("What is your email address?:").ask()
+    password = questionary.password("Choose a password:").ask()
+    phone = questionary.text("What is your phone number?:").ask()
+
+    _ = sd_client.init_signup(email, password, phone)
+
+    # ask for verification code
+    code = questionary.text("What is the verification code?:").ask()
+    sd_client.confirm_signup(email, code)
+
+    # user is signed up ..
+    print('you are now signed up and ready to use selfdiffusion')
+    print('to conitnue, you need to login selfdiffusion login your-email-address@example.com')
+    return
+
+@main.command()
+@click.argument('email')
+@click.option('--code', help='verification code', required=True)
+def confirm(email, code):
+    """ Confirms the email address of the user """
+
+    sd_client.confirm_signup(email, code)
+
+    return
+
 
 @main.command()
 @click.argument('email')
 def login(email):
 
-    from selfdiffusion.users import login
-    import questionary
     password = questionary.password("Password:").ask()
-    result = login(email, password)
-    print(result)
+    sd_client.login(email, password)
+
+@main.command()
+def balance():
+    """ returns the balance in the user account """
+
+    balance = sd_client.balance()
+    print(balance)
 
 
 @main.command()

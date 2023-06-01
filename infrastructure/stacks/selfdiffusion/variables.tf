@@ -3,6 +3,25 @@ variable "app_name" {
   type        = string
 }
 
+# TODO: Pass these default through _envcommon ... do not want to loose time on this now
+variable "vpc_cidr" {
+  description = "value of the vpc cidr block"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "azs" {
+  description = "value of the availability zones"
+  type        = list(string)
+  default     = ["ca-central-1a", "ca-central-1b"]
+}
+
+variable "public_subnets" {
+  description = "value of the public subnets"
+  type        = list(string)
+  default     = ["10.0.0.0/17", "10.0.128.0/17"]
+}
+
 variable "api_fqdn" {
   description = "The FQDN of the domain api"
   type        = string
