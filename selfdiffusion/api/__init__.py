@@ -6,6 +6,7 @@ import boto3
 DEFAULT_CONF_PATH = pathlib.Path.home() / ".selfdiffusion"
 DEFAULT_CONF_FILE = "config.json"
 
+
 class SelfDiffusionClient(object):
 
     def __init__(self, url, conf_path=DEFAULT_CONF_PATH, conf_file=DEFAULT_CONF_FILE):
@@ -37,6 +38,24 @@ class SelfDiffusionClient(object):
         # write the dict back to the conf_file
         with open(self.conf_file_path, 'w') as f:
             json.dump(conf_file, f)
+
+    def _allocate_gpu_runtime(self): #instance_type, count, ephemeral_storage):
+        """ request the allocation of a GPU runtime """
+
+        # TODO: replace this re-occuring boiletplate by something cleaner.
+        conf = self._read_conf()
+
+        bearer_token = conf['id']
+        path = self.url + '/runtime'
+
+        headers = {
+            'Authorization': 'Bearer ' + bearer_token
+        }
+
+        response = requests.post(path, headers=headers, json={'hello': 'world'})
+        return response.json()
+
+        
 
     def init_signup(self, email, password, phone):
         """ allows a user to sign up """
@@ -136,5 +155,8 @@ class SelfDiffusionClient(object):
 
         response = requests.post(path, headers=headers)
         return response.json()
+
+    def generare(self, model_id, prompt, samples):
+        """ generates a text from a prompt on a GPU runtime """
 
 

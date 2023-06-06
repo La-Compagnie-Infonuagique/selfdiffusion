@@ -8,6 +8,17 @@ locals {
 # Get data about AWS region
 data "aws_region" "current" {}
 
+# Runpod API Key SSM Param
+resource "aws_ssm_parameter" "runpod_api_key_param" {
+  name  = "/${var.app_name}/${var.env}/runpdod_api_key"
+  type  = "SecureString"
+  value = "REPLACE-ME-BY-AN-ACTUAL-KEY"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_route53_zone" "fqdn_zone" {
   name = var.api_fqdn
 }
@@ -92,7 +103,8 @@ resource "aws_iam_policy" "lambda_policy" {
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
-        "dynamodb:*"
+        "dynamodb:*",
+        "ssm:*"
       ],
       "Resource": "*"
     }
@@ -116,10 +128,11 @@ module "lambda_function" {
 
   # ENV variables for the lambda function
   environment_variables = {
-    ClientId          = aws_cognito_user_pool_client.client.id
-    UserPoolId        = aws_cognito_user_pool.user_pool.id
-    Region            = data.aws_region.current.name
-    UserInfoTableName = aws_dynamodb_table.user_information.id
+    ClientId              = aws_cognito_user_pool_client.client.id
+    UserPoolId            = aws_cognito_user_pool.user_pool.id
+    Region                = data.aws_region.current.name
+    UserInfoTableName     = aws_dynamodb_table.user_information.id
+    RunpodApiKeyParamName = aws_ssm_parameter.runpod_api_key_param.name
   }
 
   tags = {
@@ -226,6 +239,39 @@ resource "aws_api_gateway_integration" "api_gateway_integration" {
   uri                     = module.lambda_function.lambda_function_invoke_arn
 }
 
+
+# Runtime
+resource "aws_api_gateway_resource" "api_gateway_resource_runtime" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+  path_part   = "runtime"
+}
+
+
+resource "aws_api_gateway_method" "api_gateway_method_runtime" {
+  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+  resource_id   = aws_api_gateway_resource.api_gateway_resource_runtime.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.authorizer.id
+
+  request_parameters = {
+    "method.request.path.proxy" = true
+  }
+
+}
+
+resource "aws_api_gateway_integration" "api_gateway_integration_runtime" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  resource_id = aws_api_gateway_resource.api_gateway_resource_runtime.id
+  http_method = aws_api_gateway_method.api_gateway_method_runtime.http_method
+
+  integration_http_method = aws_api_gateway_method.api_gateway_method_runtime.http_method
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_function.lambda_function_invoke_arn
+}
+
+
 # Config
 resource "aws_api_gateway_resource" "api_gateway_resource_config" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
@@ -266,7 +312,7 @@ resource "aws_lambda_permission" "lambda_permission" {
 }
 
 resource "aws_api_gateway_deployment" "api_gateway_deployment" {
-  depends_on  = [aws_api_gateway_method.api_gateway_method]
+  depends_on  = [aws_api_gateway_method.api_gateway_method, aws_api_gateway_method.api_gateway_method_runtime, aws_api_gateway_method.api_gateway_method_config]
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
 
   triggers = {
@@ -374,3 +420,34 @@ resource "aws_ssm_parameter" "outbound_only_sg" {
   type  = "String"
   value = aws_security_group.outbound_only.id
 }
+
+## Allow sign in with SSM
+resource "aws_iam_instance_profile" "base_instance_profile" {
+  name = "base_instance_profile"
+  role = aws_iam_role.ec2_role.name
+}
+
+resource "aws_iam_role" "ec2_role" {
+  name               = "${local.namespace}_ec2_role"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_policy_attachment" "attachement" {
+  name       = "${local.namespace}_policy_attachement"
+  roles      = [aws_iam_role.ec2_role.name]
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+

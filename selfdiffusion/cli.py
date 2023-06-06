@@ -129,25 +129,11 @@ def review(folder):
     review(folder)
 
 @main.command()
-def connect():
-    """ Spins up a GPU runtime for the user """
+def allocate():
+    """ allocates a GPU runtime for the user """
 
-    # 1. CLI calls an API endpoint to spin up a GPU runtime.
-    # 2. Checks if the user has a GPU runtime already running.
-    # 3. If not, spins up a GPU runtime.
-    # 4. returns temporary IAM credentials via identity pool ? to let user run code.
-    # 5. CLI setups a SSH tunnel to the instance with AWS SSM.
-    # 6. All traffic is routed through the tunnel (e.g: what goes through 127.0.0.1:8888 goes to the instance)
+    print(sd_client._allocate_gpu_runtime())
 
-    sd_client = selfdiffusion_client()
-    (credentials, instance_id) = sd_client.connect()
-
-    aws_client = boto3.client('ssm')
-    aws_client.set_credentials(credentials)
-
-    aws_client.start_session(Target=instance_id, ssm_document_name='AWS-PortForwarding', args=['8888:localhost:8888'])
-
-    return
 
 @main.command()
 @click.argument('prompt')
@@ -164,5 +150,5 @@ def generate(prompt, model, resolution, inference_steps, guidance_scale, negativ
     # 1. User has a GPU runtime running. (invoked connect command)
 
     ## STEPS
-    # 
+    return
 

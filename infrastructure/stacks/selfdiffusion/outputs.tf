@@ -27,3 +27,8 @@ output "api_gateway_endpoint" {
   value       = aws_route53_record.api_endpoint.fqdn
   description = "The API Gateway endpoint"
 }
+
+output "runpod_api_key_param" {
+  value       = aws_ssm_parameter.runpod_api_key_param.name
+  description = "The name of the SSM parameter containing the Runpod API key"
+}
