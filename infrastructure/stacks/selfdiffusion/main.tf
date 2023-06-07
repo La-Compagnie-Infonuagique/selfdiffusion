@@ -201,14 +201,14 @@ resource "aws_api_gateway_rest_api" "api_gateway" {
   }
 }
 
-# Balance
+# Proxy resource
 resource "aws_api_gateway_resource" "api_gateway_resource" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "balance"
+  path_part   = "{proxy+}"
 }
 
-# adding cognito authorizer
+# adding cognito authorizer to rest_api
 resource "aws_api_gateway_authorizer" "authorizer" {
   name          = "CognitoUserPoolAuthorizer"
   type          = "COGNITO_USER_POOLS"
@@ -216,92 +216,31 @@ resource "aws_api_gateway_authorizer" "authorizer" {
   provider_arns = [aws_cognito_user_pool.user_pool.arn]
 }
 
+# Adding ANY mothod to API.
 resource "aws_api_gateway_method" "api_gateway_method" {
   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
   resource_id   = aws_api_gateway_resource.api_gateway_resource.id
-  http_method   = "POST"
+  http_method   = "ANY"
   authorization = "COGNITO_USER_POOLS"
   authorizer_id = aws_api_gateway_authorizer.authorizer.id
 
   request_parameters = {
     "method.request.path.proxy" = true
   }
-
 }
 
+# FWD all methods to lambda with POST
 resource "aws_api_gateway_integration" "api_gateway_integration" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
   resource_id = aws_api_gateway_resource.api_gateway_resource.id
   http_method = aws_api_gateway_method.api_gateway_method.http_method
 
-  integration_http_method = aws_api_gateway_method.api_gateway_method.http_method
+  integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = module.lambda_function.lambda_function_invoke_arn
 }
 
-
-# Runtime
-resource "aws_api_gateway_resource" "api_gateway_resource_runtime" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "runtime"
-}
-
-
-resource "aws_api_gateway_method" "api_gateway_method_runtime" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.api_gateway_resource_runtime.id
-  http_method   = "POST"
-  authorization = "COGNITO_USER_POOLS"
-  authorizer_id = aws_api_gateway_authorizer.authorizer.id
-
-  request_parameters = {
-    "method.request.path.proxy" = true
-  }
-
-}
-
-resource "aws_api_gateway_integration" "api_gateway_integration_runtime" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  resource_id = aws_api_gateway_resource.api_gateway_resource_runtime.id
-  http_method = aws_api_gateway_method.api_gateway_method_runtime.http_method
-
-  integration_http_method = aws_api_gateway_method.api_gateway_method_runtime.http_method
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_function.lambda_function_invoke_arn
-}
-
-
-# Config
-resource "aws_api_gateway_resource" "api_gateway_resource_config" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "config"
-}
-
-
-resource "aws_api_gateway_method" "api_gateway_method_config" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.api_gateway_resource_config.id
-  http_method   = "GET"
-  authorization = "NONE"
-
-  request_parameters = {
-    "method.request.path.proxy" = true
-  }
-
-}
-
-resource "aws_api_gateway_integration" "api_gateway_integration_config" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  resource_id = aws_api_gateway_resource.api_gateway_resource_config.id
-  http_method = aws_api_gateway_method.api_gateway_method_config.http_method
-
-  integration_http_method = aws_api_gateway_method.api_gateway_method.http_method
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_function.lambda_function_invoke_arn
-}
-
+# Permission for API gateway to invoke lambda.
 resource "aws_lambda_permission" "lambda_permission" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -311,8 +250,9 @@ resource "aws_lambda_permission" "lambda_permission" {
   source_arn = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*"
 }
 
+# Deploy the API
 resource "aws_api_gateway_deployment" "api_gateway_deployment" {
-  depends_on  = [aws_api_gateway_method.api_gateway_method, aws_api_gateway_method.api_gateway_method_runtime, aws_api_gateway_method.api_gateway_method_config]
+  depends_on  = [aws_api_gateway_method.api_gateway_method]
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
 
   triggers = {
@@ -324,11 +264,11 @@ resource "aws_api_gateway_deployment" "api_gateway_deployment" {
   }
 }
 
+# Logging for the API.
 resource "aws_cloudwatch_log_group" "api_gateway_logs" {
   name              = "${var.app_name}_API_Gateway_Logs"
   retention_in_days = 14
 }
-
 
 resource "aws_api_gateway_stage" "stage" {
   deployment_id = aws_api_gateway_deployment.api_gateway_deployment.id
