@@ -136,19 +136,28 @@ def allocate():
 
 
 @main.command()
-@click.argument('prompt')
-@click.option('--model', help='id of the model from hugging face model hub', required=True)
-@click.option('--resolution', help='output images resolution', type=(int,int), default=(512,512))
-@click.option('--inference-steps', help='Number of inference step', type=int, default=50)
-@click.option('--guidance-scale', help='classifier-free guidane parameter', type=float, default=7.5)
-@click.option('--negative-prompt', help='things that should not be in your generated samples', type=int, default=50)
-@click.option('--samples', help='Number of samples to generate for the prompt', type=int, default=1)
-def generate(prompt, model, resolution, inference_steps, guidance_scale, negative_prompt, samples):
+#@click.argument('prompt')
+#@click.option('--model', help='id of the model from hugging face model hub', required=True)
+#@click.option('--resolution', help='output images resolution', type=(int,int), default=(512,512))
+#@click.option('--inference-steps', help='Number of inference step', type=int, default=50)
+#@click.option('--guidance-scale', help='classifier-free guidane parameter', type=float, default=7.5)
+#@click.option('--negative-prompt', help='things that should not be in your generated samples', type=int, default=50)
+#@click.option('--samples', help='Number of samples to generate for the prompt', type=int, default=1)
+def generate():
     """ runs remote inference and stream the result back to the user"""
 
-    ## PRESUPPOSITIONS
-    # 1. User has a GPU runtime running. (invoked connect command)
+    return print(sd_client.generate())
 
-    ## STEPS
-    return
+@main.command()
+def result():
+    """ returns the result of the last inference run """
 
+    return print(sd_client.result())
+
+@main.command()
+def generatedev():
+    """ runs remote inference and stream the result back to the user"""
+
+    prompt = "a close up portrait photo of 26 y.o woman in wastelander clothes, long haircut, pale skin, slim body, background is city ruins, (high detailed skin:1.2), 8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3"
+    samples = 1
+    return print(sd_client.generatedev(prompt, samples))

@@ -32,3 +32,14 @@ output "runpod_api_key_param" {
   value       = aws_ssm_parameter.runpod_api_key_param.name
   description = "The name of the SSM parameter containing the Runpod API key"
 }
+
+output "aws_access_key_id" {
+  value       = aws_iam_access_key.worker_access_key.id
+  description = "value of the AWS access key ID"
+}
+
+output "aws_secret_key_id" {
+  value       = nonsensitive(aws_iam_access_key.worker_access_key.secret)
+  description = "value of the AWS secret key"
+}
+

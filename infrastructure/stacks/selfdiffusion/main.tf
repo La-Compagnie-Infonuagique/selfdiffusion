@@ -5,6 +5,66 @@ locals {
   namespace = "${var.app_name}_${var.env}"
 }
 
+data "aws_iam_policy_document" "job_bucket_policy" {
+  statement {
+    sid = "AllowReadToall"
+    actions = [
+      "s3:GetObject"
+    ]
+    resources = [
+      "${aws_s3_bucket.job_results.arn}/*"
+    ]
+
+    principals {
+      type = "*"
+      identifiers = [
+        "*"
+      ]
+    }
+  }
+}
+
+# Create S3 bucket to store customer job results
+resource "aws_s3_bucket" "job_results" {
+  bucket = "${var.app_name}-${var.env}-job-results"
+
+  tags = {
+    Name        = "${var.app_name}-${var.env}-job-results"
+    Environment = var.env
+  }
+}
+
+# SQS Queue for job scheduling
+## NOTE: Add DLQ later.
+resource "aws_sqs_queue" "job_processing_queue" {
+  name = "${var.app_name}-${var.env}-jobs-queue"
+
+  tags = {
+    Environment = var.env
+  }
+}
+
+resource "aws_s3_bucket_policy" "job_bucket_policy" {
+  bucket = aws_s3_bucket.job_results.id
+  policy = data.aws_iam_policy_document.job_bucket_policy.json
+}
+
+# NOTE: Bad, replace with relative path.
+locals {
+  examples_path = "/Users/jonathanpelletier/Projects/selfdiffusion/infrastructure/stacks/selfdiffusion/examples/4910499e-3356-4b4d-a872-5c6ebd64b819"
+  prefix        = "4910499e-3356-4b4d-a872-5c6ebd64b819"
+}
+
+# Upload the example images to the S3 bucket
+resource "aws_s3_object" "example_images" {
+
+  for_each = fileset(local.examples_path, "*")
+  bucket   = aws_s3_bucket.job_results.bucket
+  key      = "${local.prefix}/${each.value}"
+  source   = "${local.examples_path}/${each.value}"
+}
+
+
 # Get data about AWS region
 data "aws_region" "current" {}
 
@@ -78,6 +138,7 @@ resource "aws_cognito_user_pool_client" "client" {
   ]
 }
 
+# Persistance for user information
 resource "aws_dynamodb_table" "user_information" {
   name         = "user_info"
   billing_mode = "PAY_PER_REQUEST"
@@ -89,6 +150,56 @@ resource "aws_dynamodb_table" "user_information" {
   }
 }
 
+# Persistance for job processing
+resource "aws_dynamodb_table" "jobs" {
+  name         = "jobs"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "job_id"
+  range_key    = "username"
+
+  attribute {
+    name = "job_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "username"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "username_job_index"
+    hash_key        = "username"
+    range_key       = "job_id"
+    projection_type = "ALL"
+  }
+
+}
+
+# Persistance for GPU runtime lifecycle management
+resource "aws_dynamodb_table" "runtimes" {
+  name         = "runtimes"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "runtime_id"
+  range_key    = "username"
+
+  attribute {
+    name = "runtime_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "username"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "username_runtime_index"
+    hash_key        = "username"
+    range_key       = "runtime_id"
+    projection_type = "ALL"
+  }
+}
 resource "aws_iam_policy" "lambda_policy" {
   name        = "lambda_policy"
   description = "Policy for allowing lambda to access required services"
@@ -104,7 +215,9 @@ resource "aws_iam_policy" "lambda_policy" {
         "logs:CreateLogStream",
         "logs:PutLogEvents",
         "dynamodb:*",
-        "ssm:*"
+        "ssm:*",
+        "s3:*",
+        "sqs:*"
       ],
       "Resource": "*"
     }
@@ -113,7 +226,7 @@ resource "aws_iam_policy" "lambda_policy" {
 EOF
 }
 
-module "lambda_function" {
+module "lambda_api" {
   source = "terraform-aws-modules/lambda/aws"
 
   function_name = "${var.app_name}_api"
@@ -133,12 +246,90 @@ module "lambda_function" {
     Region                = data.aws_region.current.name
     UserInfoTableName     = aws_dynamodb_table.user_information.id
     RunpodApiKeyParamName = aws_ssm_parameter.runpod_api_key_param.name
+    JobResultBucketName   = aws_s3_bucket.job_results.id
+    JobQueueUrl           = aws_sqs_queue.job_processing_queue.id
+    JobTableName          = aws_dynamodb_table.jobs.id
   }
 
   tags = {
-    Name = "${var.app_name}_lambda"
+    Name = "${var.app_name}_lambda_api"
   }
 }
+
+resource "aws_iam_user" "worker" {
+  name = "${var.app_name}_${var.env}_runpod_worker"
+}
+
+resource "aws_iam_access_key" "worker_access_key" {
+  user = aws_iam_user.worker.name
+}
+
+data "aws_iam_policy_document" "worker_iam_policy" {
+  statement {
+    sid = "AllowRunpodWorkerToAccessJobQueue"
+    actions = [
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes"
+    ]
+    resources = [aws_sqs_queue.job_processing_queue.arn]
+    effect    = "Allow"
+  }
+
+  statement {
+    sid       = "AllowWorkerWriteS3"
+    actions   = ["s3:PutObject"]
+    resources = [aws_s3_bucket.job_results.arn]
+    effect    = "Allow"
+  }
+}
+
+resource "aws_iam_policy" "worker_policy" {
+  name   = "${var.app_name}_${var.env}_worker_policy"
+  policy = data.aws_iam_policy_document.worker_iam_policy.json
+
+  tags = {
+    Name        = "${var.app_name}_${var.env}_worker_policy"
+    Environment = var.env
+  }
+
+}
+
+resource "aws_iam_user_policy_attachment" "worker_policy_attachment" {
+  user       = aws_iam_user.worker.name
+  policy_arn = aws_iam_policy.worker_policy.arn
+}
+
+
+module "lambda_scheduler" {
+  source = "terraform-aws-modules/lambda/aws"
+
+  function_name = "${var.app_name}_scheduler"
+  description   = "Handler for ${var.app_name} GPU runtime scheduler"
+  handler       = "index.lambda_handler"
+  runtime       = "python3.10"
+  attach_policy = true
+  policy        = aws_iam_policy.lambda_policy.arn
+
+  # TODO: fix this to be relative path ...
+  source_path = "/Users/jonathanpelletier/Projects/selfdiffusion/services/scheduler"
+
+  # ENV variables for the lambda function
+  environment_variables = {
+    Region                = data.aws_region.current.name
+    UserInfoTableName     = aws_dynamodb_table.user_information.id
+    RunpodApiKeyParamName = aws_ssm_parameter.runpod_api_key_param.name
+    JobResultBucketName   = aws_s3_bucket.job_results.id
+    JobQueueUrl           = aws_sqs_queue.job_processing_queue.id
+    JobTableName          = aws_dynamodb_table.jobs.id
+    RuntimeTableName      = aws_dynamodb_table.runtimes.id
+  }
+
+  tags = {
+    Name = "${var.app_name}_lambda_scheduler"
+  }
+}
+
 
 # set permissions for API gateway logging at the account level:
 resource "aws_iam_role" "api_gateway_cloudwatch" {
@@ -237,20 +428,20 @@ resource "aws_api_gateway_integration" "api_gateway_integration" {
 
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = module.lambda_function.lambda_function_invoke_arn
+  uri                     = module.lambda_api.lambda_function_invoke_arn
 }
 
 # Permission for API gateway to invoke lambda.
 resource "aws_lambda_permission" "lambda_permission" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = module.lambda_function.lambda_function_name
+  function_name = module.lambda_api.lambda_function_name
   principal     = "apigateway.amazonaws.com"
 
   source_arn = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*"
 }
 
-# Deploy the API
+
 resource "aws_api_gateway_deployment" "api_gateway_deployment" {
   depends_on  = [aws_api_gateway_method.api_gateway_method]
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
@@ -264,12 +455,6 @@ resource "aws_api_gateway_deployment" "api_gateway_deployment" {
   }
 }
 
-# Logging for the API.
-resource "aws_cloudwatch_log_group" "api_gateway_logs" {
-  name              = "${var.app_name}_API_Gateway_Logs"
-  retention_in_days = 14
-}
-
 resource "aws_api_gateway_stage" "stage" {
   deployment_id = aws_api_gateway_deployment.api_gateway_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
@@ -280,6 +465,19 @@ resource "aws_api_gateway_stage" "stage" {
     format          = "$context.identity.sourceIp $context.status $context.responseLength $context.requestId $context.integrationErrorMessage $context.error.message"
   }
 }
+
+resource "aws_api_gateway_base_path_mapping" "path_mapping" {
+  domain_name = aws_api_gateway_domain_name.fqdn.domain_name
+  api_id      = aws_api_gateway_rest_api.api_gateway.id
+  stage_name  = aws_api_gateway_stage.stage.stage_name
+}
+
+# Logging for the API.
+resource "aws_cloudwatch_log_group" "api_gateway_logs" {
+  name              = "${var.app_name}_API_Gateway_Logs"
+  retention_in_days = 14
+}
+
 
 resource "aws_api_gateway_domain_name" "fqdn" {
   certificate_arn = module.acm.acm_certificate_arn
@@ -298,11 +496,6 @@ resource "aws_route53_record" "api_endpoint" {
   }
 }
 
-resource "aws_api_gateway_base_path_mapping" "path_mapping" {
-  domain_name = aws_api_gateway_domain_name.fqdn.domain_name
-  api_id      = aws_api_gateway_rest_api.api_gateway.id
-  stage_name  = aws_api_gateway_stage.stage.stage_name
-}
 
 ## Networking for users gpu instances.
 module "vpc" {

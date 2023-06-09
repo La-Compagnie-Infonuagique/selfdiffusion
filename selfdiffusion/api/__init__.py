@@ -156,7 +156,51 @@ class SelfDiffusionClient(object):
         response = requests.post(path, headers=headers)
         return response.json()
 
-    def generare(self, model_id, prompt, samples):
+    def result(self):
         """ generates a text from a prompt on a GPU runtime """
+        conf = self._read_conf()
 
+        bearer_token = conf['id']
+        path = self.url + '/result'
+
+        headers = {
+            'Authorization': 'Bearer ' + bearer_token
+        }
+
+        response = requests.post(path, json={'hello':'world'} ,headers=headers)
+        return response.json()
+
+    def generate(self):
+        """ generates a text from a prompt on a GPU runtime """
+        conf = self._read_conf()
+
+        bearer_token = conf['id']
+        path = self.url + '/generate'
+
+        headers = {
+            'Authorization': 'Bearer ' + bearer_token
+        }
+
+        response = requests.post(path, json={'hello':'world'} ,headers=headers)
+        return response.json()
+
+
+    def generatedev(self, prompt, samples):
+        """ generates a text from a prompt on a GPU runtime """
+        conf = self._read_conf()
+
+        bearer_token = conf['id']
+        path = self.url + '/generatedev'
+
+        headers = {
+            'Authorization': 'Bearer ' + bearer_token
+        }
+
+        data = {
+            'prompt': prompt, 
+            'samples': samples
+        }
+
+        response = requests.post(path, json=data ,headers=headers)
+        return response.json()
 
