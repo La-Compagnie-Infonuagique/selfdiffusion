@@ -43,3 +43,18 @@ output "aws_secret_key_id" {
   description = "value of the AWS secret key"
 }
 
+output "job_queue_url" {
+  value       = aws_sqs_queue.job_processing_queue.id
+  description = "ARN of the job queue"
+}
+
+output "result_bucket" {
+  value       = aws_s3_bucket.job_results.id
+  description = "Name of the bucket where the results are stored"
+}
+
+output "job_queue_results_url" {
+  value       = aws_sqs_queue.job_processing_queue_results.id
+  description = "SQS queue where worker will post confirmation of job complete"
+}
+

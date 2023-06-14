@@ -3,6 +3,7 @@ import os
 import boto3
 import runpod
 import uuid
+import urllib3
 
 from helpers import not_found, ok_with_text, ok_with_payload, error_with_text
 
@@ -32,23 +33,36 @@ def lambda_handler(event, _):
         except GPUNotAvailableError as e:
             return error_with_text(str(e), 503)
 
+    elif path == "/status":
+        req_data = json.loads(event['body'])
+        payload = status(req_data)
+        return ok_with_payload(payload)
+
     elif path == "/generate":
-        req_data = json.loads(event['body'])
-        payload = mock_generate(auth_context, req_data)
-        return ok_with_payload(payload)
-
-    elif path == "/result":
-        req_data = json.loads(event['body'])
-        payload = mock_result(auth_context, req_data)
-        return ok_with_payload(payload)
-
-    elif path == "/generatedev":
         req_data = json.loads(event['body'])
         payload = generate(auth_context, req_data)
         return ok_with_payload(payload)
 
     else:
         return not_found()
+
+def status(req_data):
+    """ Returns the status for the requested job """
+
+    # extract the job id from the request data
+    job_id = req_data['job_id']
+
+    # read the job status from the dynamodb table
+    job_table_name = os.environ['JobTableName']
+    dynamodb = boto3.resource('dynamodb')
+    job_table = dynamodb.Table(job_table_name)
+
+    response = job_table.get_item(Key={'job_id': job_id})
+
+    if 'Item' in response:
+        return response['Item']
+    else:
+        return {'error': 'job not found'}
 
 def generate(auth_context, req_data):
     # get cognito user
@@ -57,8 +71,14 @@ def generate(auth_context, req_data):
     # Get the job table 
     job_table_name = os.environ['JobTableName']
 
+    # Get the URL for the results
+    job_queue_result_url = os.environ['JobQueueResultUrl']
+
     # Generate the UUID for the job 
     job_id = str(uuid.uuid4())
+
+    # Get the name of the result bucket
+    result_bucket = os.environ['JobResultBucketName']
 
     # Create a JOB payoad
     job_data = {
@@ -66,6 +86,8 @@ def generate(auth_context, req_data):
         'username': username,
         'status': 'PENDING',
         'job_type': 'INFERENCE',
+        'result_bucket': result_bucket,
+        'job_result_queue': job_queue_result_url,
         'args': req_data
     }
 
@@ -76,7 +98,6 @@ def generate(auth_context, req_data):
     job_table.put_item(Item=job_data)
 
     # also write the payload to the SQS Job Queue.
-    ## Get the job queue url
     job_queue_url = os.environ['JobQueueUrl']
 
     sqs = boto3.client('sqs')
@@ -90,7 +111,6 @@ def generate(auth_context, req_data):
     print(response)
 
     return {'job_id': job_id}
-
 
 def mock_generate(auth_context, req_data):
     """ returns a phony job id """
@@ -153,7 +173,7 @@ def balance(auth_context):
     else:
         return {'balance': 0}
 
-def runtime(auth_context, _):
+def runtime(auth_context, req_data):
 
     # Extract the user email from auth_context
     username = auth_context['claims']['cognito:username']
@@ -172,7 +192,10 @@ def runtime(auth_context, _):
     pod = runpod.create_pod(
         username, 
         'runpod/pytorch:3.10-2.0.0-117',
-        'NVIDIA A100 80GB PCIe'
+        'NVIDIA A100 80GB PCIe',
+        volume_in_gb=0,
+        container_disk_in_gb=40,
+        env=req_data
     )
 
     return pod

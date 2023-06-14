@@ -44,24 +44,18 @@ resource "aws_sqs_queue" "job_processing_queue" {
   }
 }
 
+resource "aws_sqs_queue" "job_processing_queue_results" {
+  name = "${var.app_name}-${var.env}-jobs-queue-results"
+
+  tags = {
+    Environment = var.env
+  }
+
+}
+
 resource "aws_s3_bucket_policy" "job_bucket_policy" {
   bucket = aws_s3_bucket.job_results.id
   policy = data.aws_iam_policy_document.job_bucket_policy.json
-}
-
-# NOTE: Bad, replace with relative path.
-locals {
-  examples_path = "/Users/jonathanpelletier/Projects/selfdiffusion/infrastructure/stacks/selfdiffusion/examples/4910499e-3356-4b4d-a872-5c6ebd64b819"
-  prefix        = "4910499e-3356-4b4d-a872-5c6ebd64b819"
-}
-
-# Upload the example images to the S3 bucket
-resource "aws_s3_object" "example_images" {
-
-  for_each = fileset(local.examples_path, "*")
-  bucket   = aws_s3_bucket.job_results.bucket
-  key      = "${local.prefix}/${each.value}"
-  source   = "${local.examples_path}/${each.value}"
 }
 
 
@@ -177,11 +171,11 @@ resource "aws_dynamodb_table" "jobs" {
 }
 
 # Persistance for GPU runtime lifecycle management
-resource "aws_dynamodb_table" "runtimes" {
-  name         = "runtimes"
+resource "aws_dynamodb_table" "inference_runtimes" {
+  name         = "inference_runtimes"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "runtime_id"
-  range_key    = "username"
+  range_key    = "model_id"
 
   attribute {
     name = "runtime_id"
@@ -189,13 +183,13 @@ resource "aws_dynamodb_table" "runtimes" {
   }
 
   attribute {
-    name = "username"
+    name = "model_id"
     type = "S"
   }
 
   global_secondary_index {
-    name            = "username_runtime_index"
-    hash_key        = "username"
+    name            = "model_runtime_index"
+    hash_key        = "model_id"
     range_key       = "runtime_id"
     projection_type = "ALL"
   }
@@ -241,14 +235,16 @@ module "lambda_api" {
 
   # ENV variables for the lambda function
   environment_variables = {
-    ClientId              = aws_cognito_user_pool_client.client.id
-    UserPoolId            = aws_cognito_user_pool.user_pool.id
-    Region                = data.aws_region.current.name
-    UserInfoTableName     = aws_dynamodb_table.user_information.id
-    RunpodApiKeyParamName = aws_ssm_parameter.runpod_api_key_param.name
-    JobResultBucketName   = aws_s3_bucket.job_results.id
-    JobQueueUrl           = aws_sqs_queue.job_processing_queue.id
-    JobTableName          = aws_dynamodb_table.jobs.id
+    ClientId                  = aws_cognito_user_pool_client.client.id
+    UserPoolId                = aws_cognito_user_pool.user_pool.id
+    Region                    = data.aws_region.current.name
+    UserInfoTableName         = aws_dynamodb_table.user_information.id
+    RunpodApiKeyParamName     = aws_ssm_parameter.runpod_api_key_param.name
+    JobResultBucketName       = aws_s3_bucket.job_results.id
+    JobQueueUrl               = aws_sqs_queue.job_processing_queue.id
+    JobQueueResultUrl         = aws_sqs_queue.job_processing_queue_results.id
+    JobTableName              = aws_dynamodb_table.jobs.id
+    InferenceRuntimeTableName = aws_dynamodb_table.inference_runtimes.id
   }
 
   tags = {
@@ -268,18 +264,16 @@ data "aws_iam_policy_document" "worker_iam_policy" {
   statement {
     sid = "AllowRunpodWorkerToAccessJobQueue"
     actions = [
-      "sqs:ReceiveMessage",
-      "sqs:DeleteMessage",
-      "sqs:GetQueueAttributes"
+      "sqs:*",
     ]
-    resources = [aws_sqs_queue.job_processing_queue.arn]
+    resources = [aws_sqs_queue.job_processing_queue.arn, aws_sqs_queue.job_processing_queue_results.arn]
     effect    = "Allow"
   }
 
   statement {
     sid       = "AllowWorkerWriteS3"
     actions   = ["s3:PutObject"]
-    resources = [aws_s3_bucket.job_results.arn]
+    resources = ["${aws_s3_bucket.job_results.arn}/*"]
     effect    = "Allow"
   }
 }
@@ -298,6 +292,37 @@ resource "aws_iam_policy" "worker_policy" {
 resource "aws_iam_user_policy_attachment" "worker_policy_attachment" {
   user       = aws_iam_user.worker.name
   policy_arn = aws_iam_policy.worker_policy.arn
+}
+
+module "lambda_update_job_status" {
+  source = "terraform-aws-modules/lambda/aws"
+
+  function_name = "${var.app_name}_job_status"
+  description   = "Updates job status in the database"
+  handler       = "index.lambda_handler"
+  runtime       = "python3.10"
+  attach_policy = true
+  policy        = aws_iam_policy.worker_policy.arn
+
+  # TODO: fix this to be relative path ...
+  source_path = "/Users/jonathanpelletier/Projects/selfdiffusion/services/update_job_status"
+
+  # ENV variables for the lambda function
+  environment_variables = {
+    JobTableName = aws_dynamodb_table.jobs.id
+  }
+
+  tags = {
+    Name = "${var.app_name}_lambda_update_job_status"
+  }
+
+}
+
+# crate terraform resource to trigger lambda function on SQS message
+resource "aws_lambda_event_source_mapping" "job_status_event_source" {
+  event_source_arn = aws_sqs_queue.job_processing_queue_results.arn
+  function_name    = module.lambda_update_job_status.lambda_function_name
+  batch_size       = 1
 }
 
 
@@ -322,7 +347,7 @@ module "lambda_scheduler" {
     JobResultBucketName   = aws_s3_bucket.job_results.id
     JobQueueUrl           = aws_sqs_queue.job_processing_queue.id
     JobTableName          = aws_dynamodb_table.jobs.id
-    RuntimeTableName      = aws_dynamodb_table.runtimes.id
+    RuntimeTableName      = aws_dynamodb_table.inference_runtimes.id
   }
 
   tags = {

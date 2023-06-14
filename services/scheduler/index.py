@@ -14,7 +14,5 @@ def lambda_handler(event, _):
     # if ro < 1, then we are underutilized, so we can reduce the number of workers.
     # if ro > 1, then we are overutilized, so we can increase the number of workers.
 
-
-
     print('hello world')
 

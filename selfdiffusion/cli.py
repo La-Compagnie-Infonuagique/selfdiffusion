@@ -132,21 +132,27 @@ def review(folder):
 def allocate():
     """ allocates a GPU runtime for the user """
 
-    print(sd_client._allocate_gpu_runtime())
+    env = {
+     'JobQueueUrl': "https://sqs.ca-central-1.amazonaws.com/011032224108/selfdiffusion-dev-jobs-queue",
+     'AWS_DEFAULT_REGION': 'ca-central-1',
+     'AWS_ACCESS_KEY_ID':'AKIAQFEMSMFWGISK2QWQ',
+     'AWS_SECRET_ACCESS_KEY':'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'
+     }
 
+    print(sd_client._allocate_gpu_runtime(env))
 
 @main.command()
-#@click.argument('prompt')
+@click.argument('prompt')
 #@click.option('--model', help='id of the model from hugging face model hub', required=True)
 #@click.option('--resolution', help='output images resolution', type=(int,int), default=(512,512))
 #@click.option('--inference-steps', help='Number of inference step', type=int, default=50)
 #@click.option('--guidance-scale', help='classifier-free guidane parameter', type=float, default=7.5)
 #@click.option('--negative-prompt', help='things that should not be in your generated samples', type=int, default=50)
-#@click.option('--samples', help='Number of samples to generate for the prompt', type=int, default=1)
-def generate():
+@click.option('--samples', help='Number of samples to generate for the prompt', type=int, default=1)
+def generate(prompt, samples):
     """ runs remote inference and stream the result back to the user"""
 
-    return print(sd_client.generate())
+    return print(sd_client.generate(prompt, samples))
 
 @main.command()
 def result():

@@ -39,7 +39,7 @@ class SelfDiffusionClient(object):
         with open(self.conf_file_path, 'w') as f:
             json.dump(conf_file, f)
 
-    def _allocate_gpu_runtime(self): #instance_type, count, ephemeral_storage):
+    def _allocate_gpu_runtime(self, env):
         """ request the allocation of a GPU runtime """
 
         # TODO: replace this re-occuring boiletplate by something cleaner.
@@ -52,7 +52,7 @@ class SelfDiffusionClient(object):
             'Authorization': 'Bearer ' + bearer_token
         }
 
-        response = requests.post(path, headers=headers, json={'hello': 'world'})
+        response = requests.post(path, headers=headers, json=env)
         return response.json()
 
         
@@ -170,27 +170,13 @@ class SelfDiffusionClient(object):
         response = requests.post(path, json={'hello':'world'} ,headers=headers)
         return response.json()
 
-    def generate(self):
+
+    def generate(self, prompt, samples):
         """ generates a text from a prompt on a GPU runtime """
         conf = self._read_conf()
 
         bearer_token = conf['id']
         path = self.url + '/generate'
-
-        headers = {
-            'Authorization': 'Bearer ' + bearer_token
-        }
-
-        response = requests.post(path, json={'hello':'world'} ,headers=headers)
-        return response.json()
-
-
-    def generatedev(self, prompt, samples):
-        """ generates a text from a prompt on a GPU runtime """
-        conf = self._read_conf()
-
-        bearer_token = conf['id']
-        path = self.url + '/generatedev'
 
         headers = {
             'Authorization': 'Bearer ' + bearer_token
@@ -203,4 +189,22 @@ class SelfDiffusionClient(object):
 
         response = requests.post(path, json=data ,headers=headers)
         return response.json()
+
+    def status(self, job_id):
+        conf = self._read_conf()
+
+        bearer_token = conf['id']
+        path = self.url + '/status'
+
+        headers = {
+            'Authorization': 'Bearer ' + bearer_token
+        }
+
+        data = {
+            'job_id': job_id
+        }
+
+        response = requests.post(path, json=data ,headers=headers)
+        return response.json()
+
 
